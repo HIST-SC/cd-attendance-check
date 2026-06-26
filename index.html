@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>출근 체크 (지도 포함)</title>
+  <title>출근 체크 (실시간 위치 추적)</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   
@@ -18,14 +18,13 @@
       background-color: #F2F2F7;
       -webkit-tap-highlight-color: transparent;
     }
-    /* 지도 둥근 모서리와 높이 설정 */
     #map {
-      height: 200px;
+      height: 240px;
       width: 100%;
-      border-radius: 16px;
-      margin-top: 1rem;
+      border-radius: 20px;
+      margin-top: 0.5rem;
       border: 1px solid rgba(0,0,0,0.05);
-      z-index: 1; /* 블러 효과와 충돌 방지 */
+      z-index: 1;
     }
   </style>
 </head>
@@ -33,22 +32,27 @@
 
   <main class="w-full max-w-md bg-white/70 backdrop-blur-xl border border-white/40 rounded-[28px] shadow-[0_8px_32px_0_rgba(0,0,0,0.06)] p-6 transition-all duration-500">
     
-    <header class="text-center mt-2 mb-6">
-      <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#007AFF]/10 text-[#007AFF] mb-3">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6">
+    <header class="text-center mt-2 mb-4">
+      <div class="inline-flex items-center justify-center w-11 h-11 rounded-full bg-[#007AFF]/10 text-[#007AFF] mb-2">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 animate-pulse">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
         </svg>
       </div>
       <h1 class="text-2xl font-bold text-gray-900 tracking-tight">출근 체크인</h1>
-      <p id="sub-header-text" class="text-sm text-gray-500 mt-1">회사 주변 120m 내에서 가능합니다.</p>
+      <p class="text-sm text-gray-500 mt-0.5">실시간으로 위치를 동기화 중입니다.</p>
     </header>
 
     <div id="form-section" class="space-y-4">
       
-      <div id="map"></div>
+      <div class="relative">
+        <div id="map"></div>
+        <div class="absolute bottom-3 left-3 z-[10] bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-xl text-[11px] font-mono text-white/90">
+          📍 현재: <span id="current-coords">위치 파악 중...</span>
+        </div>
+      </div>
       
-      <div class="space-y-2pt-2">
+      <div class="space-y-1.5 pt-1">
         <label for="username" class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-1">이름</label>
         <input 
           type="text" 
@@ -61,18 +65,18 @@
       <button 
         id="check-btn" 
         onclick="handleAttendance()"
-        class="w-full py-4 bg-[#007AFF] text-white font-semibold rounded-2xl shadow-lg shadow-[#007AFF]/20 active:scale-[0.98] active:bg-[#0066CC] transition-all duration-200 flex items-center justify-center space-x-2"
+        class="w-full py-4 bg-[#007AFF] text-white font-semibold rounded-2xl shadow-lg shadow-[#007AFF]/20 active:scale-[0.98] active:bg-[#0066CC] transition-all duration-200 flex items-center justify-center"
       >
         <span>출근하기</span>
       </button>
     </div>
 
-    <div id="loading-section" class="hidden flex flex-col items-center justify-center py-10 space-y-4">
+    <div id="loading-section" class="hidden flex flex-col items-center justify-center py-12 space-y-4">
       <div class="w-8 h-8 border-4 border-[#007AFF]/20 border-t-[#007AFF] rounded-full animate-spin"></div>
-      <p id="loading-text" class="text-sm font-medium text-gray-500">위치 확인 중...</p>
+      <p id="loading-text" class="text-sm font-medium text-gray-500">구글 시트에 기록하는 중...</p>
     </div>
 
-    <div id="result-section" class="hidden flex flex-col items-center justify-center py-6 text-center animate-fade-in">
+    <div id="result-section" class="hidden flex flex-col items-center justify-center py-6 text-center">
       <div id="result-icon" class="mb-4"></div>
       <h2 id="result-title" class="text-xl font-bold text-gray-900"></h2>
       <p id="result-message" class="text-sm text-gray-500 mt-2 max-w-xs whitespace-pre-line"></p>
@@ -87,50 +91,91 @@
   </main>
 
   <script>
-    // [설정] 회사 위치 및 잘 작동하는 GAS URL 입력
     const COMPANY_LAT = 37.5628878;
     const COMPANY_LNG = 126.9812199;
-    const ALLOWED_DISTANCE = 120; // 허용 반경 (120m)
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzXzLbuVQKJwPXJu3IzsppxGdjrD--wuJyBSPP94FyoNLwCuCJ37MBP9irWOGGeqIS31w/exec"; // ★★★ 꼭 교체하세요 ★★★
+    const ALLOWED_DISTANCE = 120; 
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzXzLbuVQKJwPXJu3IzsppxGdjrD--wuJyBSPP94FyoNLwCuCJ37MBP9irWOGGeqIS31w/exec"; 
 
-    let map; // Leaflet 지도 객체
-    let userMarker, circle; // 사용자 마커 및 반경 원 객체
+    let map;
+    let userMarker;
+    let watchId = null; // 실시간 위치 추적 아이디 저장 변수
+    
+    // 최종 확인된 전역 사용자 좌표 변수
+    let currentLat = 0;
+    let currentLng = 0;
 
-    // 페이지 로드 시 회사 위치 기준으로 지도 초기화
     window.onload = function() {
       initMap();
+      startTracking(); // 앱이 켜지면 즉시 실시간 추적 시작
     };
 
-    // 지도 초기화 함수
     function initMap() {
-      // 회사 위치로 지도 생성
       map = L.map('map', {
-        zoomControl: false, // iOS 스타일 미니멀리즘을 위해 줌 버튼 숨김
-        dragging: !L.Browser.mobile, // 모바일에서 드래그 끔 (스크롤 방해 예방)
+        zoomControl: false,
+        dragging: !L.Browser.mobile,
         touchZoom: 'center',
         doubleClickZoom: false,
-        scrollWheelZoom: false,
-        boxZoom: false
-      }).setView([COMPANY_LAT, COMPANY_LNG], 17); // 줌 레벨 17 (건물단위)
+        scrollWheelZoom: false
+      }).setView([COMPANY_LAT, COMPANY_LNG], 17);
 
-      // 무료 지도 타일 스타일 적용 (OpenStreetMap 무료 테마)
       L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+        attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
-      // 회사 위치 표시 (빨간색 마커)
+      // 회사 위치 마커 (빨간색)
       L.marker([COMPANY_LAT, COMPANY_LNG]).addTo(map);
 
-      // 허용 반경 120m 원 표시 (반투명 파란색)
+      // 허용 바운더리 원 (파란색)
       L.circle([COMPANY_LAT, COMPANY_LNG], {
-        color: '#007AFF', // 애플 블루
+        color: '#007AFF',
         fillColor: '#007AFF',
-        fillOpacity: 0.15,
-        radius: ALLOWED_DISTANCE // 120
+        fillOpacity: 0.12,
+        radius: ALLOWED_DISTANCE
       }).addTo(map);
     }
 
-    // 하버사인(Haversine) 거리 계산 함수
+    // [핵심] 실시간 위치 추적(Watch) 시작 함수
+    function startTracking() {
+      if (!navigator.geolocation) {
+        document.getElementById('current-coords').innerText = "GPS 미지원 브라우저";
+        return;
+      }
+
+      // 이전 추적이 살아있다면 종료 후 재시작
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          currentLat = position.coords.latitude;
+          currentLng = position.coords.longitude;
+
+          // 1. 좌측 하단 오버레이 텍스트 실시간 업데이트
+          document.getElementById('current-coords').innerText = `${currentLat.toFixed(5)}, ${currentLng.toFixed(5)}`;
+
+          // 2. 지도 위의 사용자 파란 점 위치 이동
+          if (userMarker) {
+            userMarker.setLatLng([currentLat, currentLng]);
+          } else {
+            userMarker = L.circleMarker([currentLat, currentLng], {
+              radius: 7,
+              color: 'white',
+              fillColor: '#007AFF',
+              fillOpacity: 1,
+              weight: 2
+            }).addTo(map);
+          }
+
+          // 3. 사용자가 이동할 때마다 회사와 나를 동시에 담도록 지도 시야 자동 보정
+          const group = new L.featureGroup([L.marker([COMPANY_LAT, COMPANY_LNG]), userMarker]);
+          map.fitBounds(group.getBounds().pad(0.3));
+        },
+        (error) => {
+          document.getElementById('current-coords').innerText = "위치 갱신 실패 (권한 없음)";
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
     function getDistance(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
       const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -141,8 +186,8 @@
       return R * c;
     }
 
-    // '출근하기' 버튼 클릭 로직
-    function handleAttendance() {
+    // '출근하기' 버튼 클릭 시
+    async function handleAttendance() {
       const nameInput = document.getElementById('username');
       const name = nameInput.value.trim();
 
@@ -152,57 +197,27 @@
         return;
       }
 
-      switchUI('loading');
-      updateLoadingText("현재 내 위치 확인 중...");
-
-      if (!navigator.geolocation) {
-        showResult(false, "지원되지 않는 브라우저", "GPS를 지원하지 않는 브라우저입니다.");
+      // 현재 추적된 최신 위치가 수집되었는지 방어 코드
+      if (currentLat === 0 || currentLng === 0) {
+        alert("아직 위치 좌표가 수집되지 않았습니다. 잠시 후 다시 시도해 주세요.");
         return;
       }
 
-      // 정밀 위치 정보 수집
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const userLat = position.coords.latitude;
-          const userLng = position.coords.longitude;
-          const distance = getDistance(userLat, userLng, COMPANY_LAT, COMPANY_LNG);
-          
-          // 지도에 사용자 현재 위치 표시 (파란색 점)
-          if (userMarker) map.removeLayer(userMarker);
-          userMarker = L.circleMarker([userLat, userLng], {
-            radius: 7,
-            color: 'white',
-            fillColor: '#007AFF',
-            fillOpacity: 1,
-            weight: 2
-          }).addTo(map);
-          
-          // 사용자와 회사 위치 모두 보이도록 지도 뷰 조정
-          const group = new L.featureGroup([L.marker([COMPANY_LAT, COMPANY_LNG]), userMarker]);
-          map.fitBounds(group.getBounds().pad(0.3));
+      switchUI('loading');
 
-          // 거리 판별 (120m 이내)
-          if (distance <= ALLOWED_DISTANCE) {
-            updateLoadingText("구글 시트에 출근 기록 중...");
-            await sendToGoogleSheets(name, userLat, userLng);
-          } else {
-            showResult(
-              false, 
-              "위치 인증 실패", 
-              `회사와 너무 멉니다.\n(허용: ${ALLOWED_DISTANCE}m / 현재: ${Math.round(distance)}m)\n\nWi-Fi를 켜거나 창가 쪽에서 다시 시도해 주세요.`
-            );
-          }
-        },
-        (error) => {
-          showResult(false, "위치 오류", "현재 위치 정보를 가져오지 못했습니다.\nGPS 권한 설정을 확인하세요.");
-          // 권한 거부 시 폼 UI로 복귀
-          setTimeout(() => resetUI(), 2500);
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
+      const distance = getDistance(currentLat, currentLng, COMPANY_LAT, COMPANY_LNG);
+      
+      if (distance <= ALLOWED_DISTANCE) {
+        await sendToGoogleSheets(name, currentLat, currentLng);
+      } else {
+        showResult(
+          false, 
+          "위치 인증 실패", 
+          `회사와 너무 멉니다.\n(허용: ${ALLOWED_DISTANCE}m / 현재: ${Math.round(distance)}m)\n\n바운더리 원 안으로 들어와 주세요.`
+        );
+      }
     }
 
-    // 구글 스프레드시트에 전송 (CORS 완화 전송 양식 적용)
     async function sendToGoogleSheets(name, lat, lng) {
       try {
         const formData = new URLSearchParams();
@@ -236,11 +251,10 @@
           }
         }
       } catch (error) {
-        showResult(false, "통신 오류", "구글 서버와 연결할 수 없습니다. GAS 배포 설정을 확인해 주세요.");
+        showResult(false, "통신 오류", "구글 서버와 통신할 수 없습니다.");
       }
     }
 
-    // UI 상태 전환 함수
     function switchUI(state) {
       document.getElementById('form-section').classList.add('hidden');
       document.getElementById('loading-section').classList.add('hidden');
@@ -251,11 +265,6 @@
       else if (state === 'result') document.getElementById('result-section').classList.remove('hidden');
     }
 
-    function updateLoadingText(text) {
-      document.getElementById('loading-text').innerText = text;
-    }
-
-    // 최종 결과 출력 함수
     function showResult(isSuccess, title, message) {
       switchUI('result');
       const iconDiv = document.getElementById('result-icon');
@@ -263,17 +272,16 @@
       document.getElementById('result-message').innerText = message;
 
       if (isSuccess) {
-        iconDiv.innerHTML = `<div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 flex items-center justify-center animate-scale-in"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg></div>`;
+        iconDiv.innerHTML = `<div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg></div>`;
       } else {
-        iconDiv.innerHTML = `<div class="w-16 h-16 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center animate-scale-in"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg></div>`;
+        iconDiv.innerHTML = `<div class="w-16 h-16 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg></div>`;
       }
     }
 
-    // 초기화 함수
     function resetUI() {
       switchUI('form');
-      if (userMarker) map.removeLayer(userMarker); // 내 위치 마커 제거
-      map.setView([COMPANY_LAT, COMPANY_LNG], 17); // 회사 중심으로 지도 복귀
+      // 다시 시도할 때 추적이 끊기지 않도록 재시작 점검
+      startTracking();
     }
   </script>
 </body>
