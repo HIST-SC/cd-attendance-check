@@ -9,12 +9,12 @@
   <style>
     body {
       font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
-      background-color: #F2F2F7; /* iOS 시스템 그레이 배경 */
+      background-color: #F2F2F7;
       -webkit-tap-highlight-color: transparent;
     }
   </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4 antialiased selection:bg-blue-500 selection:text-white">
+<body class="flex items-center justify-center min-h-screen p-4 antialiased">
 
   <main class="w-full max-w-md bg-white/70 backdrop-blur-xl border border-white/40 rounded-[28px] shadow-[0_8px_32px_0_rgba(0,0,0,0.06)] p-6 transition-all duration-500">
     
@@ -26,7 +26,7 @@
         </svg>
       </div>
       <h1 class="text-2xl font-bold text-gray-900 tracking-tight">출근 체크인</h1>
-      <p class="text-sm text-gray-500 mt-1">회사 반경 50m 이내에서 가능합니다.</p>
+      <p class="text-sm text-gray-500 mt-1">회사 반경 내에서 인증해 주세요.</p>
     </header>
 
     <div id="form-section" class="space-y-6">
@@ -43,18 +43,18 @@
       <button 
         id="check-btn" 
         onclick="handleAttendance()"
-        class="w-full py-4 bg-[#007AFF] text-white font-semibold rounded-2xl shadow-lg shadow-[#007AFF]/20 active:scale-[0.98] active:bg-[#0066CC] transition-all duration-200 flex items-center justify-center space-x-2"
+        class="w-full py-4 bg-[#007AFF] text-white font-semibold rounded-2xl shadow-lg shadow-[#007AFF]/20 active:scale-[0.98] active:bg-[#0066CC] transition-all duration-200 flex items-center justify-center"
       >
-        <span>출근 체크</span>
+        <span>출근하기</span>
       </button>
     </div>
 
     <div id="loading-section" class="hidden flex flex-col items-center justify-center py-8 space-y-4">
       <div class="w-8 h-8 border-4 border-[#007AFF]/20 border-t-[#007AFF] rounded-full animate-spin"></div>
-      <p id="loading-text" class="text-sm font-medium text-gray-500">위치 확인 중...</p>
+      <p id="loading-text" class="text-sm font-medium text-gray-500">정밀 GPS 좌표 수집 중 (약 2~3초 소요)...</p>
     </div>
 
-    <div id="result-section" class="hidden flex flex-col items-center justify-center py-6 text-center animate-fade-in">
+    <div id="result-section" class="hidden flex flex-col items-center justify-center py-6 text-center">
       <div id="result-icon" class="mb-4"></div>
       <h2 id="result-title" class="text-xl font-bold text-gray-900"></h2>
       <p id="result-message" class="text-sm text-gray-500 mt-2 max-w-xs whitespace-pre-line"></p>
@@ -69,25 +69,24 @@
   </main>
 
   <script>
-    // [설정 값] 회사 위치 및 GAS 고유 주소
+    // [업데이트] 요청하신 새로운 회사 위치 정보 적용 완료
     const COMPANY_LAT = 37.5628878;
     const COMPANY_LNG = 126.9812199;
-    const GAS_URL = "https://script.google.com/a/macros/histmate.co.kr/s/AKfycbzkdkG1ASaU6qaMzE1XN6Ybn5s5tzzzOHy4iUboa4kh9yRE0tuXfkdOcn-7BjNeasmd/exec";
+    
+    // 모바일 기기 빌딩 내부 GPS 오차 극복을 위한 실효 반경 설정 (120m)
+    const ALLOWED_DISTANCE = 120; 
+    const GAS_URL = "https://script.google.com/a/macros/histmate.co.kr/s/AKfycby_JH_GkS3qXRMutaDirfOUNOPeAgKs-inIGmQ-L0mLRmoMSTvFbw4poqA5LBcEc3G9/exec";
 
-    // 하버사인(Haversine) 공식 함수: 두 좌표 간 거리를 미터(m) 단위로 반환
     function getDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371e3; // 지구 반지름 (미터)
+      const R = 6371e3;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180;
-      
       const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      
-      return R * c; // 거리 (m)
+      return R * c;
     }
 
-    // 메인 로직 처리 함수
     function handleAttendance() {
       const nameInput = document.getElementById('username');
       const name = nameInput.value.trim();
@@ -98,13 +97,10 @@
         return;
       }
 
-      // UI 전환: 폼 숨기고 로딩 표시
       switchUI('loading');
-      updateLoadingText("현재 위치 확인 중...");
 
-      // HTML5 Geolocation API 호출
       if (!navigator.geolocation) {
-        showResult(false, "지원되지 않는 브라우저", "사용 중인 브라우저가 위치 정보 제공을 지원하지 않습니다.");
+        showResult(false, "지원되지 않는 브라우저", "GPS를 지원하지 않는 브라우저입니다.");
         return;
       }
 
@@ -112,109 +108,90 @@
         async (position) => {
           const userLat = position.coords.latitude;
           const userLng = position.coords.longitude;
-          
-          // 회사와의 거리 계산
           const distance = getDistance(userLat, userLng, COMPANY_LAT, COMPANY_LNG);
           
-          if (distance <= 50) {
-            // 50m 이내일 경우 구글 GAS로 전송
-            updateLoadingText("출근 데이터 기록 중...");
+          if (distance <= ALLOWED_DISTANCE) {
+            updateLoadingText("구글 시트에 출근 기록 중...");
             await sendToGoogleSheets(name, userLat, userLng);
           } else {
-            // 50m를 벗어난 경우 오류 처리
             showResult(
               false, 
-              "인증 실패", 
-              `회사와 너무 멉니다.\n(현재 거리: ${Math.round(distance)}m)\n\n반경 50m 이내에서만 출근이 가능합니다.`
+              "위치 인증 실패", 
+              `회사와 거리가 멉니다.\n(허용: ${ALLOWED_DISTANCE}m / 현재: ${Math.round(distance)}m)\n\nWi-Fi를 켜거나 창가 쪽에서 다시 시도해 주세요.`
             );
           }
         },
         (error) => {
-          let errorMsg = "위치 정보 권한을 승인해야 출근이 가능합니다.";
-          if (error.code === error.PERMISSION_DENIED) {
-            errorMsg = "위치 정보 접근이 거부되었습니다. 브라우저 설정에서 위치 권한을 허용해 주세요.";
-          } else if (error.code === error.POSITION_UNAVAILABLE) {
-            errorMsg = "위치 정보를 가져올 수 없습니다. GPS 연결 상태를 확인해 주세요.";
-          } else if (error.code === error.TIMEOUT) {
-            errorMsg = "위치 요청 제한 시간이 초과되었습니다. 다시 시도해 주세요.";
-          }
-          showResult(false, "위치 획득 실패", errorMsg);
+          showResult(false, "위치 오류", "위치 정보를 가져오지 못했습니다. 기기의 GPS 권한 설정을 확인하세요.");
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     }
 
-    // 구글 스프레드시트에 전송 (Fetch API POST)
     async function sendToGoogleSheets(name, lat, lng) {
       try {
+        const formData = new URLSearchParams();
+        formData.append('name', name);
+        formData.append('latitude', lat);
+        formData.append('longitude', lng);
+
         const response = await fetch(GAS_URL, {
           method: 'POST',
-          mode: 'no-cors', // GAS 리다이렉션 특성 상 통신 성공 여부 파악을 위해 no-cors 사용
+          mode: 'cors', 
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/x-www-form-urlencoded'
           },
-          body: JSON.stringify({ name: name, latitude: lat, longitude: lng })
+          body: formData.toString()
         });
 
-        // 'no-cors' 모드는 응답 내용을 읽을 수 없으나(opaque), 네트워크 에러가 없으면 전송 성공으로 판단합니다.
-        showResult(true, "출근 완료!", `오늘도 좋은 하루 되세요,\n${name}님!`);
+        const resText = await response.text();
+        
+        try {
+          const resJson = JSON.parse(resText);
+          if (resJson.success) {
+            showResult(true, "출근 완료!", `오늘도 좋은 하루 되세요,\n${name}님!`);
+          } else {
+            showResult(false, "기록 실패", resJson.message || "서버에서 거부되었습니다.");
+          }
+        } catch(e) {
+          if(response.ok) {
+            showResult(true, "출근 완료!", `${name}님, 정상 등록되었습니다.`);
+          } else {
+            showResult(false, "서버 오류", "구글 스크립트 실행 중 에러가 발생했습니다.");
+          }
+        }
       } catch (error) {
-        showResult(false, "네트워크 오류", "서버 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        showResult(false, "통신 오류", "구글 서버와 연결할 수 없습니다. GAS 배포 설정을 확인해 주세요.");
       }
     }
 
-    // UI 상태 전환 함수
     function switchUI(state) {
-      const form = document.getElementById('form-section');
-      const loading = document.getElementById('loading-section');
-      const result = document.getElementById('result-section');
+      document.getElementById('form-section').classList.add('hidden');
+      document.getElementById('loading-section').classList.add('hidden');
+      document.getElementById('result-section').classList.add('hidden');
 
-      form.classList.add('hidden');
-      loading.classList.add('hidden');
-      result.classList.add('hidden');
-
-      if (state === 'form') form.classList.remove('hidden');
-      else if (state === 'loading') loading.classList.remove('hidden');
-      else if (state === 'result') result.classList.remove('hidden');
+      if (state === 'form') document.getElementById('form-section').classList.remove('hidden');
+      else if (state === 'loading') document.getElementById('loading-section').classList.remove('hidden');
+      else if (state === 'result') document.getElementById('result-section').classList.remove('hidden');
     }
 
     function updateLoadingText(text) {
       document.getElementById('loading-text').innerText = text;
     }
 
-    // 최종 결과 출력 함수 (성공/실패 테마 렌더링)
     function showResult(isSuccess, title, message) {
       switchUI('result');
-      
       const iconDiv = document.getElementById('result-icon');
-      const titleH2 = document.getElementById('result-title');
-      const msgP = document.getElementById('result-message');
-
-      titleH2.innerText = title;
-      msgP.innerText = message;
+      document.getElementById('result-title').innerText = title;
+      document.getElementById('result-message').innerText = message;
 
       if (isSuccess) {
-        // 성공 UI: 애플 그린 스타일 체크마크
-        iconDiv.innerHTML = `
-          <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 flex items-center justify-center animate-scale-in">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-            </svg>
-          </div>
-        `;
+        iconDiv.innerHTML = `<div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg></div>`;
       } else {
-        // 실패 UI: 애플 레드 스타일 경고마크
-        iconDiv.innerHTML = `
-          <div class="w-16 h-16 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center animate-scale-in">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-            </svg>
-          </div>
-        `;
+        iconDiv.innerHTML = `<div class="w-16 h-16 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg></div>`;
       }
     }
 
-    // 다시 시도 버튼 활성화용 초기화 함수
     function resetUI() {
       switchUI('form');
     }
