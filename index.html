@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>출근 체크 (실시간 위치 추적)</title>
+  <title>출근 체크 (지도 확장 버전)</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   
@@ -18,41 +18,36 @@
       background-color: #F2F2F7;
       -webkit-tap-highlight-color: transparent;
     }
+    /* [수정] 지도 높이를 240px -> 340px로 키우고 둥근 모서리 최적화 */
     #map {
-      height: 240px;
+      height: 340px;
       width: 100%;
-      border-radius: 20px;
-      margin-top: 0.5rem;
-      border: 1px solid rgba(0,0,0,0.05);
+      border-radius: 24px;
+      margin-top: 0.25rem;
+      border: 1px solid rgba(0,0,0,0.04);
       z-index: 1;
     }
   </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4 antialiased">
 
-  <main class="w-full max-w-md bg-white/70 backdrop-blur-xl border border-white/40 rounded-[28px] shadow-[0_8px_32px_0_rgba(0,0,0,0.06)] p-6 transition-all duration-500">
+  <main class="w-full max-w-md bg-white/70 backdrop-blur-xl border border-white/40 rounded-[32px] shadow-[0_12px_40px_0_rgba(0,0,0,0.06)] p-6 transition-all duration-500">
     
-    <header class="text-center mt-2 mb-4">
-      <div class="inline-flex items-center justify-center w-11 h-11 rounded-full bg-[#007AFF]/10 text-[#007AFF] mb-2">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 animate-pulse">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
-        </svg>
-      </div>
+    <header class="text-center mt-1 mb-4">
       <h1 class="text-2xl font-bold text-gray-900 tracking-tight">출근 체크인</h1>
-      <p class="text-sm text-gray-500 mt-0.5">실시간으로 위치를 동기화 중입니다.</p>
+      <p class="text-xs text-gray-500 mt-0.5">실시간으로 내 위치를 동기화 중입니다.</p>
     </header>
 
-    <div id="form-section" class="space-y-4">
+    <div id="form-section" class="space-y-5">
       
       <div class="relative">
         <div id="map"></div>
-        <div class="absolute bottom-3 left-3 z-[10] bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-xl text-[11px] font-mono text-white/90">
+        <div class="absolute bottom-4 left-4 z-[10] bg-black/65 backdrop-blur-md px-3 py-1.5 rounded-xl text-[11px] font-mono text-white/95 shadow-sm">
           📍 현재: <span id="current-coords">위치 파악 중...</span>
         </div>
       </div>
       
-      <div class="space-y-1.5 pt-1">
+      <div class="space-y-1.5">
         <label for="username" class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-1">이름</label>
         <input 
           type="text" 
@@ -71,12 +66,12 @@
       </button>
     </div>
 
-    <div id="loading-section" class="hidden flex flex-col items-center justify-center py-12 space-y-4">
+    <div id="loading-section" class="hidden flex flex-col items-center justify-center py-16 space-y-4">
       <div class="w-8 h-8 border-4 border-[#007AFF]/20 border-t-[#007AFF] rounded-full animate-spin"></div>
       <p id="loading-text" class="text-sm font-medium text-gray-500">구글 시트에 기록하는 중...</p>
     </div>
 
-    <div id="result-section" class="hidden flex flex-col items-center justify-center py-6 text-center">
+    <div id="result-section" class="hidden flex flex-col items-center justify-center py-10 text-center">
       <div id="result-icon" class="mb-4"></div>
       <h2 id="result-title" class="text-xl font-bold text-gray-900"></h2>
       <p id="result-message" class="text-sm text-gray-500 mt-2 max-w-xs whitespace-pre-line"></p>
@@ -93,20 +88,19 @@
   <script>
     const COMPANY_LAT = 37.5628878;
     const COMPANY_LNG = 126.9812199;
-    const ALLOWED_DISTANCE = 120; 
+    const ALLOWED_DISTANCE = 80;   // 반경 거리(m)
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzXzLbuVQKJwPXJu3IzsppxGdjrD--wuJyBSPP94FyoNLwCuCJ37MBP9irWOGGeqIS31w/exec"; 
 
     let map;
     let userMarker;
-    let watchId = null; // 실시간 위치 추적 아이디 저장 변수
+    let watchId = null;
     
-    // 최종 확인된 전역 사용자 좌표 변수
     let currentLat = 0;
     let currentLng = 0;
 
     window.onload = function() {
       initMap();
-      startTracking(); // 앱이 켜지면 즉시 실시간 추적 시작
+      startTracking();
     };
 
     function initMap() {
@@ -122,10 +116,8 @@
         attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
-      // 회사 위치 마커 (빨간색)
       L.marker([COMPANY_LAT, COMPANY_LNG]).addTo(map);
 
-      // 허용 바운더리 원 (파란색)
       L.circle([COMPANY_LAT, COMPANY_LNG], {
         color: '#007AFF',
         fillColor: '#007AFF',
@@ -134,14 +126,12 @@
       }).addTo(map);
     }
 
-    // [핵심] 실시간 위치 추적(Watch) 시작 함수
     function startTracking() {
       if (!navigator.geolocation) {
-        document.getElementById('current-coords').innerText = "GPS 미지원 브라우저";
+        document.getElementById('current-coords').innerText = "GPS 미지원";
         return;
       }
 
-      // 이전 추적이 살아있다면 종료 후 재시작
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
 
       watchId = navigator.geolocation.watchPosition(
@@ -149,10 +139,8 @@
           currentLat = position.coords.latitude;
           currentLng = position.coords.longitude;
 
-          // 1. 좌측 하단 오버레이 텍스트 실시간 업데이트
           document.getElementById('current-coords').innerText = `${currentLat.toFixed(5)}, ${currentLng.toFixed(5)}`;
 
-          // 2. 지도 위의 사용자 파란 점 위치 이동
           if (userMarker) {
             userMarker.setLatLng([currentLat, currentLng]);
           } else {
@@ -165,12 +153,11 @@
             }).addTo(map);
           }
 
-          // 3. 사용자가 이동할 때마다 회사와 나를 동시에 담도록 지도 시야 자동 보정
           const group = new L.featureGroup([L.marker([COMPANY_LAT, COMPANY_LNG]), userMarker]);
           map.fitBounds(group.getBounds().pad(0.3));
         },
         (error) => {
-          document.getElementById('current-coords').innerText = "위치 갱신 실패 (권한 없음)";
+          document.getElementById('current-coords').innerText = "위치 수집 중지됨";
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
@@ -186,7 +173,6 @@
       return R * c;
     }
 
-    // '출근하기' 버튼 클릭 시
     async function handleAttendance() {
       const nameInput = document.getElementById('username');
       const name = nameInput.value.trim();
@@ -197,9 +183,8 @@
         return;
       }
 
-      // 현재 추적된 최신 위치가 수집되었는지 방어 코드
       if (currentLat === 0 || currentLng === 0) {
-        alert("아직 위치 좌표가 수집되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+        alert("위치 좌표를 수집 중입니다. 잠시만 기다려 주세요.");
         return;
       }
 
@@ -213,7 +198,7 @@
         showResult(
           false, 
           "위치 인증 실패", 
-          `회사와 너무 멉니다.\n(허용: ${ALLOWED_DISTANCE}m / 현재: ${Math.round(distance)}m)\n\n바운더리 원 안으로 들어와 주세요.`
+          `회사와 너무 멉니다.\n(허용: ${ALLOWED_DISTANCE}m / 현재: ${Math.round(distance)}m)\n\n바운더리 원 안으로 이동해 주세요.`
         );
       }
     }
@@ -247,7 +232,7 @@
           if(response.ok) {
             showResult(true, "출근 완료!", `${name}님, 정상 등록되었습니다.`);
           } else {
-            showResult(false, "서버 오류", "구글 스크립트 실행 중 에러가 발생했습니다.");
+            showResult(false, "서버 오류", "구글 스크립트 에러가 발생했습니다.");
           }
         }
       } catch (error) {
@@ -280,7 +265,6 @@
 
     function resetUI() {
       switchUI('form');
-      // 다시 시도할 때 추적이 끊기지 않도록 재시작 점검
       startTracking();
     }
   </script>
